@@ -1,8 +1,16 @@
 # Dictator
 
+<p align="center">
+  <img src="assets/readme-hero.png" alt="Dictator README hero">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/stack-Python%203.11%2B%20%7C%20Whisper%20%7C%20CUDA%20%7C%20Linux-0f172a?style=flat" alt="Tech stack">
+</p>
+
 Terminal voice-to-text dictation for Linux. Speak and text appears wherever your cursor is.
 
-A background daemon keeps a Whisper model warm in GPU memory. When you start recording, audio is chunked in real-time using Voice Activity Detection (Silero VAD) so transcriptions stream out phrase-by-phrase as you speak — no waiting for a long recording to finish.
+A background daemon keeps a Whisper model warm in GPU memory. When you start recording, audio is chunked in real-time using Voice Activity Detection (Silero VAD) so transcriptions stream out phrase-by-phrase as you speak, with no waiting for a long recording to finish.
 
 ## How it works
 
@@ -44,7 +52,7 @@ pgrep ydotoold || ydotoold &>/dev/null &
 # Start the daemon (loads Whisper model into GPU memory)
 dictator start
 
-# Start recording — switch focus to where you want text, then speak
+# Start recording - switch focus to where you want text, then speak
 dictator record
 
 # Ctrl+C to stop recording
@@ -79,9 +87,9 @@ mode = "type"               # type | clipboard | stdout
 
 ### Output modes
 
-- **type** — types text into the focused window via ydotool (default)
-- **clipboard** — copies text to clipboard via wl-copy/xclip
-- **stdout** — prints to the terminal running `dictator record`
+- **type** - types text into the focused window via ydotool (default)
+- **clipboard** - copies text to clipboard via wl-copy/xclip
+- **stdout** - prints to the terminal running `dictator record`
 
 ## Architecture
 
@@ -101,7 +109,7 @@ mode = "type"               # type | clipboard | stdout
 └──────────────────────────────────────────────┘
 ```
 
-The daemon keeps the Whisper model loaded in VRAM so there's no startup delay when you begin recording. Audio is processed through Silero VAD which detects speech boundaries — when you pause, that chunk is sent to Whisper immediately. Transcriptions appear in under a second.
+The daemon keeps the Whisper model loaded in VRAM so there's no startup delay when you begin recording. Audio is processed through Silero VAD which detects speech boundaries; when you pause, that chunk is sent to Whisper immediately. Transcriptions appear in under a second.
 
 ## Logs and history
 
