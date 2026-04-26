@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dictator"
+version = "0.1.0"
+description = "Terminal voice-to-text dictation using Whisper"
+requires-python = ">=3.11"
+dependencies = [
+    "faster-whisper>=1.0.0",
+    "sounddevice>=0.4.6",
+    "onnxruntime-gpu>=1.16.0",
+    "numpy>=1.24.0",
+]
+
+[project.scripts]
+dictator = "dictator.cli:main"
