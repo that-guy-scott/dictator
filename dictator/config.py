@@ -1,7 +1,10 @@
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 import sys
 import tomllib
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -20,6 +23,7 @@ class WhisperConfig:
 class VadConfig:
     pause_threshold: float = 0.5
     min_chunk_length: float = 1.0
+    max_segment_length: float = 30.0
 
 
 @dataclass
@@ -63,9 +67,19 @@ def load_config(path: Path | None = None) -> Config:
                 setattr(config.whisper, key, data["whisper"][key])
 
     if "vad" in data:
-        for key in ("pause_threshold", "min_chunk_length"):
+        for key in ("pause_threshold", "min_chunk_length", "max_segment_length"):
             if key in data["vad"]:
                 setattr(config.vad, key, float(data["vad"][key]))
+
+    if config.vad.max_segment_length <= config.vad.min_chunk_length:
+        clamped = config.vad.min_chunk_length * 2
+        log.warning(
+            "max_segment_length (%.1f) must be > min_chunk_length (%.1f); clamping to %.1f",
+            config.vad.max_segment_length,
+            config.vad.min_chunk_length,
+            clamped,
+        )
+        config.vad.max_segment_length = clamped
 
     if "output" in data:
         if "mode" in data["output"]:

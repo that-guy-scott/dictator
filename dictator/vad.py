@@ -17,7 +17,7 @@ MODEL_PATH = CACHE_DIR / "silero_vad.onnx"
 # Silero VAD expects 512 new samples + 64 context samples at 16kHz
 CHUNK_SAMPLES = 512
 CONTEXT_SIZE = 64  # 16kHz context window
-SPEECH_THRESHOLD = 0.5
+SPEECH_THRESHOLD = 0.35
 
 
 def _ensure_model() -> Path:
@@ -48,10 +48,12 @@ class VadChunker:
         self.sample_rate = config.audio.sample_rate
         self.pause_threshold = config.vad.pause_threshold
         self.min_chunk_length = config.vad.min_chunk_length
+        self.max_segment_length = config.vad.max_segment_length
         self.on_segment = on_segment
 
         # Samples of silence needed before we consider speech ended
         self._pause_samples = int(self.pause_threshold * self.sample_rate)
+        self._max_segment_samples = int(self.max_segment_length * self.sample_rate)
 
         self._reset_state()
 
@@ -66,6 +68,7 @@ class VadChunker:
         # Speech tracking
         self._is_speaking = False
         self._speech_buffer: list[np.ndarray] = []
+        self._buffered_samples: int = 0
         self._silence_count = 0  # samples of silence since last speech
 
         # Leftover audio that didn't fill a full 512-sample chunk
@@ -117,11 +120,25 @@ class VadChunker:
                 self._silence_count = 0
                 log.info("Speech started (prob=%.4f)", prob)
             self._speech_buffer.append(chunk)
+            self._buffered_samples += len(chunk)
             self._silence_count = 0
+
+            # Force-emit if segment exceeds the length cap
+            if self._buffered_samples >= self._max_segment_samples:
+                segment = np.concatenate(self._speech_buffer)
+                duration = len(segment) / self.sample_rate
+                self._speech_buffer = []
+                self._buffered_samples = 0
+                self._silence_count = 0
+                # Keep _is_speaking = True — speech is still active
+                log.info("Forcing segment split at %.2fs (cap=%.1fs)", duration, self.max_segment_length)
+                if self.on_segment:
+                    self.on_segment(segment)
         else:
             if self._is_speaking:
                 # Still in a speech region, counting silence
                 self._speech_buffer.append(chunk)
+                self._buffered_samples += len(chunk)
                 self._silence_count += CHUNK_SAMPLES
                 if self._silence_count >= self._pause_samples:
                     self._emit_segment()
@@ -134,10 +151,20 @@ class VadChunker:
             return
 
         segment = np.concatenate(self._speech_buffer)
+
+        # Trim trailing silence that was buffered while waiting for the
+        # pause threshold.  Leaving it in causes Whisper to hallucinate
+        # repeated text to fill the dead air.
+        if self._silence_count > 0:
+            trim = min(self._silence_count, len(segment) - CHUNK_SAMPLES)
+            if trim > 0:
+                segment = segment[:-trim]
+
         duration = len(segment) / self.sample_rate
 
         self._is_speaking = False
         self._speech_buffer = []
+        self._buffered_samples = 0
         self._silence_count = 0
 
         if duration < self.min_chunk_length:

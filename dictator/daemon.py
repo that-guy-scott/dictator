@@ -227,7 +227,7 @@ class Daemon:
                 send_message(conn, {"type": "error", "message": "Not recording"})
 
     def _start_recording(self, client_conn: socket.socket) -> None:
-        self._audio_queue = queue.Queue()
+        self._audio_queue = queue.Queue(maxsize=500)
         self._recording_client = client_conn
 
         try:
@@ -279,34 +279,35 @@ class Daemon:
     def _processing_loop(self) -> None:
         client = self._recording_client
         previous_prompt: str | None = None
-        full_transcript: list[str] = []
+        clipboard_text: str = ""
 
         output_mode = self.config.output.mode
 
         def on_segment(segment: np.ndarray) -> None:
-            nonlocal previous_prompt
+            nonlocal previous_prompt, clipboard_text
             log.info("Transcribing segment (%.2fs)...", len(segment) / self.config.audio.sample_rate)
             text = self.transcriber.transcribe(segment, prompt=previous_prompt)
             if text:
                 previous_prompt = text
-                full_transcript.append(text)
                 _log_history(text)
 
                 # Output via configured method
                 if output_mode == "clipboard":
                     # Clipboard: accumulate full transcript so user can paste everything
-                    _output_text("\n".join(full_transcript), "clipboard")
+                    clipboard_text = text if not clipboard_text else clipboard_text + "\n" + text
+                    _output_text(clipboard_text, "clipboard")
                 elif output_mode == "type":
                     # Type: send just this phrase (it's typed live)
                     _output_text(text + " ", "type")
 
-                # Always send back to CLI client too
-                try:
-                    send_message(client, {"type": "transcript", "text": text, "final": False})
-                except (BrokenPipeError, ConnectionResetError, OSError):
-                    log.warning("Client disconnected during transcription.")
-                    if self._recorder:
-                        self._recorder.cancel()
+                # Only echo transcript text to the CLI in stdout mode.
+                if output_mode == "stdout":
+                    try:
+                        send_message(client, {"type": "transcript", "text": text, "final": False})
+                    except (BrokenPipeError, ConnectionResetError, OSError):
+                        log.warning("Client disconnected during transcription.")
+                        if self._recorder:
+                            self._recorder.cancel()
 
         try:
             vad = VadChunker(self.config, on_segment=on_segment)
